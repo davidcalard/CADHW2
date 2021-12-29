@@ -14,6 +14,28 @@ using namespace std;
 bool verbose = false;
 
 ///////////////////helper function declarations////////////////////////////
+void ff_event(vector<hcmNode*>& , hcmInstance* cur_inst);
+void gate_eval(vector<hcmNode*> &events, hcmInstance* cur_inst, bool (*op)(bool x1,bool x2), bool n);
+
+/*
+Defininig gate functions
+*/
+bool and_g(bool x1, bool x2){
+	return x1 && x2; 
+}
+bool or_g(bool x1, bool x2){
+	return x1 || x2; 
+}
+bool xor_g(bool x1, bool x2){
+	return x1 ^ x2; 
+}
+bool not_g(bool x1, bool x2){
+	return !x2; // we want to invert our in_state
+}
+bool buffer_g(bool x1,  bool x2){
+	return x2; 
+}
+
 /*
 AFFECTED GATES
 Given nodes in event queue finds hcmInstances or gates that are influenced by it 
@@ -26,8 +48,7 @@ void affected_gates(vector<hcmNode*> &events,vector<hcmInstance*> &gate_sim){
 	vector<hcmNode*>::iterator non_repeat = std::unique(events.begin(), events.end());
 	events.resize(std::distance(events.begin(), non_repeat));
 	int post = events.size();
-	if(prior == post){cout<<"WAS THE SAME"<<endl;}
-	else{cout<< "was not the same"<<endl;}
+
 	vector<hcmNode*>::iterator nI; 
 	
 	for(nI = events.begin(); nI != events.end(); nI++){
@@ -46,6 +67,92 @@ void affected_gates(vector<hcmNode*> &events,vector<hcmInstance*> &gate_sim){
 	
 	
 	
+	
+}
+/*
+Simulate GATES
+Given gates in gate sim queue simulates gate of the given hcminstances with its current inputs by calling matching gate handler.
+*/
+void simulate(vector<hcmNode*> &events, vector<hcmInstance*> &gate_sim){
+		vector<hcmInstance*>::iterator iI; 
+		bool (*op)(bool x1,bool x2); 
+		//find gate name for each instance and simulate it 
+		for(iI=gate_sim.begin(); iI!=gate_sim.end(); iI++){
+			hcmInstance* inst = (*iI);
+			string cur_gate = inst->masterCell()->getName();
+			bool n = 0 ;
+			//simulation algorithm depending on name
+			if(string::npos != cur_gate.find("and")){
+				n=(string::npos != cur_gate.find("nand"));
+				op = &and_g;
+			}
+			else if(string::npos != cur_gate.find("or")){
+				n=(string::npos != cur_gate.find("nor"));
+				op = &or_g;
+			}
+			else if(string::npos != cur_gate.find("xor")){
+				//n=(string::npos != cur_gate.find("xnor"))
+				op = &xor_g;
+			}
+			else if(string::npos != cur_gate.find("not")){
+				op = &not_g;
+			}
+			else if(string::npos != cur_gate.find("buffer")){
+				op = &buffer_g;
+			}	
+			if(string::npos != cur_gate.find("dff")){
+				continue; 
+			}
+			
+		gate_eval(events, inst, op, n);	
+		}
+	gate_sim.clear();
+			
+	
+}
+/*
+Gate evaluation function-> evaluates the output of a given hcmInstance* 
+if output value changes output node is added to event queue
+->all primitives in std_cell have a given output- therefore we use this for simulation
+
+*/
+void gate_eval(vector<hcmNode*> &events, hcmInstance* cur_inst, bool (*op)(bool x1,bool x2), bool n){
+	map<string, hcmInstPort*> inst_ports = cur_inst->getInstPorts();
+	map<string, hcmInstPort*>::iterator ipI;
+	hcmInstPort* out_inst;
+	bool result; // initial value of result depends on gate? currently made for AND 
+	bool in_state = 0;
+	bool out_state = 0; 
+	int count = 0 ; 
+	
+	for(ipI = inst_ports.begin(); ipI != inst_ports.end(); ipI++){
+		hcmInstPort* cur_instp = ipI->second;
+		
+		//find direction
+		hcmPort* cur_p = ipI->second->getPort(); 
+		
+		//calculate bool result 
+		if(cur_p->getDirection() == IN){
+			cur_instp->getNode()->getProp("cur_bool", in_state);//get input value 
+			if(count == 0 ) {result = in_state;}
+			else{result = op(result,in_state);}
+		}	
+		// obtain current output value 
+		if(cur_p->getDirection() == OUT){
+			out_inst = ipI->second;	
+			out_inst->getNode()->getProp("cur_bool",out_state);
+		}
+		count ++; 
+	}
+	
+	if(n){result = !result;}
+	
+	// check if output has changed- if yes add the output node to the event queue 
+	if(out_state!= result){
+		hcmNode * out_node = out_inst->getNode();
+		out_node->setProp("cur_bool",result);
+		events.push_back(out_node);
+	} 
 	
 }
 /*
@@ -74,11 +181,6 @@ void ff_event(vector<hcmNode*>& events, hcmInstance* inst){
 		//every instport represents a port in the mastercell (we use this to find direction)
 		hcmPort* cur_p = ipI->second->getPort(); 
 		
-		/*cout<< "CURRENT INSTPORT:"<<endl; 
-		cout<< cur_inst->getName()<<endl;
-		cout<< "CURRENT port in master:"<<endl; 
-		cout<< cur_p->getName()<<endl;
-*/
 		if(cur_p->getDirection() == IN){
 			if(cur_p->getName()=="D"){
 				cur_inst->getNode()->getProp("cur_bool", D_state);// update current input to dff 
@@ -183,15 +285,15 @@ int main(int argc, char **argv) {
     exit(1);
   }
   
-  vcdFormatter vcd(topLevel + ".vcd", topCell, globalNodes);
-  if (!vcd.good()) {
-    printf("-E- Could not create vcdFormatter for cell: %s\n", 
-           topLevel.c_str());
-    exit(1);
-  }
+ 
  hcmCell *flatCell = hcmFlatten(topLevel + string("_flat"), topCell, globalNodes);
  cout << "-I- Top cell flattened" << endl;
  
+ vcdFormatter vcd(topLevel + ".vcd", flatCell, globalNodes);
+  if (!vcd.good()) {
+    printf("-E- Could not create vcdFormatter for cell: %s\n", topLevel.c_str());
+    exit(1);
+  }
  // Initialization of all states of all nodes in Topcell- we initialize all to 0 
  
 map<string, hcmNode* > topcell_nodes = flatCell->getNodes();  
@@ -240,7 +342,8 @@ vector<hcmInstance*> gates_tosim_queue; //vector which acts as an event queue
 
 //We simulate the circuit as long as there are new signal values  
 while (parser.readVector() == 0) {
-	
+	vcd.changeTime(stime); 
+
 	// evaluate the dff states (prevents loop and enables simulation of dff)
 	// add any changes to the even queue, we do this prior to rest of the circuit 
 	
@@ -268,13 +371,28 @@ while (parser.readVector() == 0) {
 
 	 int count = 0;
 	 vector<hcmNode*>::iterator nI;
+	//Find gates effects by signal value changes and simulate the circuit till we reach stability  
 	while(events.size()){
 		affected_gates(events, gates_tosim_queue);
 		events.clear(); //we added all affected gates currently no more events 
-		//simulation(&events, &gates_tosim_queue);
+		simulate(events, gates_tosim_queue);
 	}
-	 
-	 
+	
+	//update VCD file (for all signals?)
+	map<string, hcmNode* >::iterator nnI;
+	list<const hcmInstance*> parents; 
+	bool cur_state; 
+	
+	//We erase VDD and VSS from map of simulated nodes while assigning them to the desired value 
+	for(nnI = topcell_nodes.begin();nnI != topcell_nodes.end(); nnI++){
+		hcmNode* vcd_node = nnI->second;
+		if(vcd_node->getName() == "VSS" || vcd_node->getName() == "VDD")
+			continue;
+		hcmNodeCtx* ctx = new hcmNodeCtx(parents, vcd_node);
+		vcd_node->getProp("cur_bool",cur_state);
+		vcd.changeValue(ctx, cur_state);
+		
+	}
 	stime++; 
   }
 	
