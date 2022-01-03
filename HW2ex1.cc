@@ -82,26 +82,30 @@ void simulate(vector<hcmNode*> &events, vector<hcmInstance*> &gate_sim){
 		for(iI=gate_sim.begin(); iI!=gate_sim.end(); iI++){
 			hcmInstance* inst = (*iI);
 			string cur_gate = inst->getName();
+			string cur_gate_m = inst->masterCell()->getName();
+
 			bool n = 0 ;
-			//simulation algorithm depending on name
-			if(string::npos != cur_gate.find("dff")){
+			//depending on stdcell.v used we can identify if cur instance is part of a DFF
+			// by either inst name or master name
+			if(string::npos != cur_gate.find("dff")||string::npos != cur_gate_m.find("dff")){
 				continue; 
 			}
-			else if(string::npos != cur_gate.find("and")){
-				n=(string::npos != cur_gate.find("nand"));
+			
+			if(string::npos != cur_gate_m.find("and")){
+				n=(string::npos != cur_gate_m.find("nand"));
 				op = &and_g;
 			}
-			else if(string::npos != cur_gate.find("or")){
-				n=(string::npos != cur_gate.find("nor"));
+			else if(string::npos != cur_gate_m.find("or")){
+				n=(string::npos != cur_gate_m.find("nor"));
 				op = &or_g;
 			}
-			else if(string::npos != cur_gate.find("xor")){
+			else if(string::npos != cur_gate_m.find("xor")){
 				op = &xor_g;
 			}
-			else if(string::npos != cur_gate.find("not")){
+			else if(string::npos != cur_gate_m.find("not")){
 				op = &not_g;
 			}
-			else if(string::npos != cur_gate.find("buffer")){
+			else if(string::npos != cur_gate_m.find("buffer")){
 				op = &buffer_g;
 			}	
 			
@@ -345,8 +349,11 @@ map<string, hcmInstance*>::iterator iI;
 //create vector of dff's for preliminary simulation 
 for(iI = all_instances.begin();iI != all_instances.end();iI++){
 	string cur_inst = iI->second->getName();
-	cout<<"current master"<<cur_inst<<endl;
-	if(string::npos != cur_inst.find("dff")){
+	string cur_inst_m = iI->second->masterCell()->getName();
+	cout<<"current instance"<< cur_inst << endl;
+	cout<< "current instance master"<< iI->second->masterCell()->getName()<<endl ; 
+	
+	if(string::npos != cur_inst.find("dff")||string::npos != cur_inst_m.find("dff")){
 		dff_instances.push_back(iI->second);
 	}
 }
@@ -396,7 +403,7 @@ while (parser.readVector() == 0) {
 			
 	 }
 	 
-	 if(stime ==0 ){
+	 if(stime ==0){
 		map<string, hcmNode* >::iterator nI;
 	//We erase VDD and VSS from map of simulated nodes while assigning them to the desired value 
 		 for(nI = topcell_nodes.begin();nI != topcell_nodes.end(); nI++){
