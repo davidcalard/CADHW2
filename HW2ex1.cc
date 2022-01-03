@@ -14,7 +14,7 @@ using namespace std;
 bool verbose = false;
 
 ///////////////////helper function declarations////////////////////////////
-void ff_event(vector<hcmNode*>& , hcmInstance* cur_inst);
+void ff_event(vector<hcmNode*>& , hcmInstance* cur_inst, bool f);
 void gate_eval(vector<hcmNode*> &events, hcmInstance* cur_inst, bool (*op)(bool x1,bool x2), bool n);
 
 /*
@@ -59,6 +59,8 @@ void affected_gates(vector<hcmNode*> &events,vector<hcmInstance*> &gate_sim){
 			//gates effected are gates for which this instport is an input
 			hcmPort* cur_p = ipI->second->getPort(); 
 			if(cur_p->getDirection() == IN){	
+				//cout<< "THESE ARE THE AFFECTED GATES ----------------"<<endl;
+				//cout<<ipI->second->getInst()->getName()<<endl;
 				gate_sim.push_back(ipI->second->getInst());//returns Instance to which input is effecting		
 			}
 			
@@ -79,10 +81,13 @@ void simulate(vector<hcmNode*> &events, vector<hcmInstance*> &gate_sim){
 		//find gate name for each instance and simulate it 
 		for(iI=gate_sim.begin(); iI!=gate_sim.end(); iI++){
 			hcmInstance* inst = (*iI);
-			string cur_gate = inst->masterCell()->getName();
+			string cur_gate = inst->getName();
 			bool n = 0 ;
 			//simulation algorithm depending on name
-			if(string::npos != cur_gate.find("and")){
+			if(string::npos != cur_gate.find("dff")){
+				continue; 
+			}
+			else if(string::npos != cur_gate.find("and")){
 				n=(string::npos != cur_gate.find("nand"));
 				op = &and_g;
 			}
@@ -91,7 +96,6 @@ void simulate(vector<hcmNode*> &events, vector<hcmInstance*> &gate_sim){
 				op = &or_g;
 			}
 			else if(string::npos != cur_gate.find("xor")){
-				//n=(string::npos != cur_gate.find("xnor"))
 				op = &xor_g;
 			}
 			else if(string::npos != cur_gate.find("not")){
@@ -100,9 +104,6 @@ void simulate(vector<hcmNode*> &events, vector<hcmInstance*> &gate_sim){
 			else if(string::npos != cur_gate.find("buffer")){
 				op = &buffer_g;
 			}	
-			if(string::npos != cur_gate.find("dff")){
-				continue; 
-			}
 			
 		gate_eval(events, inst, op, n);	
 		}
@@ -166,7 +167,7 @@ When clock is 0 we want to update the output
 When the clock is 1 we "Store" 
 */
 
-void ff_event(vector<hcmNode*>& events, hcmInstance* inst){
+void ff_event(vector<hcmNode*>& events, hcmInstance* inst, bool f){
 	map<string, hcmInstPort* > instp = inst->getInstPorts();  // get all the inst ports of this node
 	map<string, hcmInstPort* >::iterator ipI;
 	
@@ -195,20 +196,38 @@ void ff_event(vector<hcmNode*>& events, hcmInstance* inst){
 		} 
 	}
 	
+	if(f){
+		cout << "WE ARE IN FIRST ROUND" <<endl; 
+		hcmNode * out_node = out_inst->getNode();
+		events.push_back(out_node);
 	
-	if(clk_state == false){
-		//check if output changes- if not no need to update anything
-		if(D_state!=out_state){
-			cout<<"old out-state"<<out_state<<endl;
-			cout<<"new out-state"<<D_state<<endl;
-			hcmNode * out_node = out_inst->getNode();
-			out_node->setProp("cur_bool",D_state);
-			events.push_back(out_node);
-		}	
-	}
+	}else{
+		if(clk_state == false){
+			//check if output changes- if not no need to update anything
+			if(D_state!=out_state){
+				cout<<"old out-state"<<out_state<<endl;
+				cout<<"new out-state"<<D_state<<endl;
+				hcmNode * out_node = out_inst->getNode();
+				out_node->setProp("cur_bool",D_state);
+				events.push_back(out_node);
+			}	
+		}
+	}	
 	// if clock_state is true we store values
 }
 
+void printfunc(map<string, hcmNode* > &topcell_nodes){
+	
+	map<string, hcmNode* >::iterator nI; 
+	bool node_val; 
+	for(nI = topcell_nodes.begin();nI != topcell_nodes.end(); nI++){
+		hcmNode *node = (*nI).second;
+		node->getProp("cur_bool", node_val);
+		string nname = node->getName();
+		cout << "node name:" << nname << " node value: " << node_val <<endl; 		
+	}
+	cout<< "----------------------------------------------------------------------------"<<endl;
+}
 
 
 
@@ -325,8 +344,8 @@ map<string, hcmInstance*>::iterator iI;
 
 //create vector of dff's for preliminary simulation 
 for(iI = all_instances.begin();iI != all_instances.end();iI++){
-	string cur_inst = iI->second->masterCell()->getName();
-
+	string cur_inst = iI->second->getName();
+	cout<<"current master"<<cur_inst<<endl;
 	if(string::npos != cur_inst.find("dff")){
 		dff_instances.push_back(iI->second);
 	}
@@ -338,19 +357,22 @@ bool prev_val;
 bool cur_val; 
 vector<hcmNode*> events; //vector which acts as an event queue 
 vector<hcmInstance*> gates_tosim_queue; //vector which acts as an event queue 
-
+bool f ;
 
 //We simulate the circuit as long as there are new signal values  
 while (parser.readVector() == 0) {
 	vcd.changeTime(stime); 
+	cout<<stime<<endl; 
 
 	// evaluate the dff states (prevents loop and enables simulation of dff)
 	// add any changes to the even queue, we do this prior to rest of the circuit 
-	
+	cout<< "NEW STIME"<<endl; 
+	printfunc(topcell_nodes);
 	vector<hcmInstance*>::iterator dI;
+	
 	for(dI= dff_instances.begin();dI!=dff_instances.end();dI++){
 		hcmInstance* cur_FF = *dI; 
-		ff_event(events, cur_FF); //passed by reference
+		ff_event(events, cur_FF, f); //passed by reference
 	}
 	
 	
@@ -361,6 +383,11 @@ while (parser.readVector() == 0) {
 		parser.getSigValue(name, val);
 		cur_n = topcell_nodes[name]; //extract pointer to the node signal represents 
 		cur_n->getProp("cur_bool",cur_val);
+		if(stime ==0 ){
+			events.push_back(cur_n);
+			cur_n->setProp("cur_bool", val);
+			continue; 
+		}
 		if(cur_val == val) continue; //case where the node value stays the same
 		else{ 
 		events.push_back(cur_n);
@@ -368,7 +395,22 @@ while (parser.readVector() == 0) {
 		}
 			
 	 }
+	 
+	 if(stime ==0 ){
+		map<string, hcmNode* >::iterator nI;
+	//We erase VDD and VSS from map of simulated nodes while assigning them to the desired value 
+		 for(nI = topcell_nodes.begin();nI != topcell_nodes.end(); nI++){
+				hcmNode *node = (*nI).second;
+				events.push_back(node);
+				cout<< node->getName() <<endl; 
+				
+			}
+	 }
+	 	cout<< "READ SIGNALS"<<endl; 
 
+		printfunc(topcell_nodes);
+	
+	
 	 int count = 0;
 	 vector<hcmNode*>::iterator nI;
 	//Find gates effects by signal value changes and simulate the circuit till we reach stability  
@@ -376,7 +418,11 @@ while (parser.readVector() == 0) {
 		affected_gates(events, gates_tosim_queue);
 		events.clear(); //we added all affected gates currently no more events 
 		simulate(events, gates_tosim_queue);
+		
+
 	}
+
+
 	
 	//update VCD file (for all signals?)
 	map<string, hcmNode* >::iterator nnI;
