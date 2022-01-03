@@ -321,27 +321,29 @@ int main(int argc, char **argv) {
  
 map<string, hcmNode* > topcell_nodes = flatCell->getNodes();  
 map<string, hcmNode* >::iterator nI;
+printfunc(topcell_nodes);
 
 //We erase VDD and VSS from map of simulated nodes while assigning them to the desired value 
- for(nI = topcell_nodes.begin();nI != topcell_nodes.end(); nI++){
+ for(nI = topcell_nodes.begin(); nI != topcell_nodes.end(); nI++){
 		hcmNode *node = (*nI).second;
 		node->setProp("cur_bool", false);
 		string nname = node->getName();
 		
+		cout<< nname<<endl;
+		
 		if (nname == "VSS")
 		{
-			topcell_nodes.erase(nI);
 			continue;
 		}
 		if (nname == "VDD")
 		{
 			node->setProp("cur_bool", true); // VDD is '1'
-			topcell_nodes.erase(nI);
 			continue;
 		}
 			
 	}
-	
+topcell_nodes.erase(string("VDD"));
+topcell_nodes.erase(string("VSS"));
 vector<hcmInstance*> dff_instances; 
 map<string, hcmInstance*> all_instances = flatCell->getInstances();
 map<string, hcmInstance*>::iterator iI; 
