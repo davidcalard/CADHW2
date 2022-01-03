@@ -186,8 +186,11 @@ void ff_event(vector<hcmNode*>& events, hcmInstance* inst, bool f){
 		//every instport represents a port in the mastercell (we use this to find direction)
 		hcmPort* cur_p = ipI->second->getPort(); 
 		
+		cout << cur_p->getName() <<endl; 
+		
 		if(cur_p->getDirection() == IN){
 			if(cur_p->getName()=="D"){
+				cout << "WE ARRIVED TO D -------------------------" << endl; 
 				cur_inst->getNode()->getProp("cur_bool", D_state);// update current input to dff 
 		}else if(cur_p->getName() == "CLK"){
 				cur_inst->getNode()->getProp("cur_bool", clk_state);	
@@ -200,12 +203,7 @@ void ff_event(vector<hcmNode*>& events, hcmInstance* inst, bool f){
 		} 
 	}
 	
-	if(f){
-		cout << "WE ARE IN FIRST ROUND" <<endl; 
-		hcmNode * out_node = out_inst->getNode();
-		events.push_back(out_node);
-	
-	}else{
+
 		if(clk_state == false){
 			//check if output changes- if not no need to update anything
 			if(D_state!=out_state){
@@ -216,7 +214,7 @@ void ff_event(vector<hcmNode*>& events, hcmInstance* inst, bool f){
 				events.push_back(out_node);
 			}	
 		}
-	}	
+		
 	// if clock_state is true we store values
 }
 
@@ -381,6 +379,7 @@ while (parser.readVector() == 0) {
 	
 	for(dI= dff_instances.begin();dI!=dff_instances.end();dI++){
 		hcmInstance* cur_FF = *dI; 
+		//cout<< "we go FF!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"<<endl ;
 		ff_event(events, cur_FF, f); //passed by reference
 	}
 	
